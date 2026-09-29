@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-script
+  namespace: netflix-lab
+data:
+  test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+
+    export const options = {
+      stages: [
+        { duration: '30s', target: 50 },   // sube a 50 usuarios virtuales
+        { duration: '90s', target: 50 },   // se mantiene
+        { duration: '30s', target: 0 },    // baja
+      ],
+      thresholds: {
+        http_req_failed: ['rate<0.01'],     // menos de 1% de errores
+        http_req_duration: ['p(95)<1500'],  // p95 bajo 1.5 s
+      },
+    };
+
+    export default function () {
+      const r = http.get(`${__ENV.TARGET}/api/work?ms=80`);
+      check(r, { 'status 200': (res) => res.status === 200 });
+      sleep(0.1);
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-stress
+  namespace: netflix-lab
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+          args: ["run", "/scripts/test.js"]
+          env:
+            - { name: TARGET, value: "http://backend:8080" }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+      volumes:
+        - name: script
+          configMap: { name: k6-script }

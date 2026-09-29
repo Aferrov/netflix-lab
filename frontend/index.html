@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratorio Kubernetes</title>
+<style>
+:root{--ink:#14202b;--mute:#5d6b78;--paper:#f2f4f6;--panel:#fff;--line:#d3dae1;--k8s:#326ce5;--ok:#1f9d6b;--warn:#d9902b;--bad:#d64545;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:18px 28px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 40px;align-items:baseline;justify-content:space-between}
+h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
+h2{margin:0 0 12px;font-size:15px;font-weight:650}
+#hpa{font-family:var(--mono);font-size:13px;color:var(--mute)}
+#hpa b{color:var(--ink);font-weight:600}
+main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px;padding:20px 28px}
+@media(max-width:900px){main{grid-template-columns:1fr;padding:16px}}
+section{background:var(--panel);border:1px solid var(--line);padding:16px 18px}
+.stack{display:grid;gap:20px;align-content:start}
+.grp{margin-bottom:14px}
+.grp small{display:block;color:var(--mute);margin-bottom:6px;font-size:13px}
+.tiles{display:flex;flex-wrap:wrap;gap:8px}
+.tile{width:172px;border:1px solid var(--line);border-left:5px solid var(--warn);padding:6px 8px;font-family:var(--mono);font-size:12px;position:relative;background:#fff;transition:background .3s}
+.tile.ok{border-left-color:var(--ok)}.tile.bad{border-left-color:var(--bad);background:#fdf1f1}
+.tile .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:18px}
+.tile .m{color:var(--mute)}
+.tile button{position:absolute;top:2px;right:2px;border:0;background:none;color:var(--mute);cursor:pointer;font-size:16px;line-height:1;padding:2px 5px}
+.tile button:hover{color:var(--bad)}
+#log{font-family:var(--mono);font-size:12px;max-height:230px;overflow:auto;display:grid;gap:2px}
+#log .add{color:var(--k8s)}#log .ok{color:var(--ok)}#log .warn{color:var(--warn)}#log .bad{color:var(--bad)}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:12px}
+.stats div{font-size:13px;color:var(--mute)}.stats b{display:block;font-size:22px;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.bar{display:grid;grid-template-columns:150px 1fr 40px;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;margin:3px 0}
+.bar i{display:block;height:12px;background:var(--k8s);transition:width .4s}.bar.err i{background:var(--bad)}
+.bar span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+label{font-size:13px;color:var(--mute)}
+button.act,select{font:inherit;font-size:14px;padding:6px 12px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+button.act:hover{border-color:var(--ink)}button.act.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+button.act:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--k8s);outline-offset:2px}
+p.h{margin:0 0 10px;color:var(--mute);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Laboratorio Kubernetes</h1>
+  <div id="hpa">Conectando con el clúster…</div>
+</header>
+<main>
+  <div class="stack">
+    <section>
+      <h2>Pods del clúster</h2>
+      <p class="h">Borra un pod con la × y observa cómo Kubernetes lo recrea.</p>
+      <div id="pods"></div>
+    </section>
+    <section>
+      <h2>Lo que hace Kubernetes</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+  <div class="stack">
+    <section>
+      <h2>Tráfico</h2>
+      <div class="stats">
+        <div>Peticiones/s<b id="rps">0</b></div>
+        <div>Latencia media<b id="lat">0 ms</b></div>
+        <div>Errores (10 s)<b id="errs">0</b></div>
+        <div>Visitas en Redis<b id="visits">–</b></div>
+      </div>
+      <div id="bars"></div>
+    </section>
+    <section>
+      <h2>Generar tráfico</h2>
+      <div class="row">
+        <button class="act" id="traffic">Enviar tráfico constante</button>
+        <label>ritmo <select id="rate"><option value="2">2 / s</option><option value="5" selected>5 / s</option><option value="10">10 / s</option></select></label>
+      </div>
+      <div class="row">
+        <label for="vus">Usuarios de estrés en el navegador: <b id="vusn">0</b></label>
+        <input type="range" id="vus" min="0" max="40" value="0">
+      </div>
+      <p class="h">Para una prueba seria usa el Job de k6 (ver README).</p>
+    </section>
+    <section>
+      <h2>Provocar fallos</h2>
+      <div class="row">
+        <button class="act" id="crash">Tumbar un pod (crash)</button>
+        <button class="act" id="sick">Pod enfermo (liveness)</button>
+        <button class="act" id="unready">Pod no listo (readiness)</button>
+      </div>
+      <p class="h">Cada botón afecta al pod que reciba la petición.</p>
+    </section>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const win = [];
+let podsPrev = null, hpaDesired;
+
+function log(msg, kind = '') {
+  const el = document.createElement('div');
+  el.className = kind;
+  el.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  const box = $('#log');
+  box.prepend(el);
+  while (box.children.length > 60) box.lastChild.remove();
+}
+
+async function hit(url, opts) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url, opts);
+    const j = await r.json();
+    win.push({ t: Date.now(), pod: r.ok ? (j.pod || '?') : 'error', ms: performance.now() - t0, ok: r.ok });
+    if (win.length > 600) win.shift();
+    if (j.visits != null) $('#visits').textContent = j.visits;
+    else if (url === '/api/info' && r.ok) $('#visits').textContent = 'Redis caído';
+    return r.ok ? j : null;
+  } catch {
+    win.push({ t: Date.now(), pod: 'error', ms: performance.now() - t0, ok: false });
+    return null;
+  }
+}
+
+function podState(p) {
+  if (p.phase === 'Terminating') return ['bad', 'terminando'];
+  if (p.reason) return ['bad', p.reason];
+  if (p.phase === 'Running' && p.ready) return ['ok', 'listo'];
+  if (p.phase === 'Running') return ['warn', 'no listo'];
+  return ['warn', p.phase.toLowerCase()];
+}
+const fmtAge = s => s < 90 ? s + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : Math.round(s / 3600) + ' h';
+
+function diff(cur) {
+  const m = new Map(cur.map(p => [p.name, p]));
+  if (podsPrev) {
+    for (const p of cur) {
+      const o = podsPrev.get(p.name);
+      if (!o) log(`Nuevo pod ${p.name} (${p.app}) asignado a ${p.node || 'un nodo'}`, 'add');
+      else {
+        if (p.restarts > o.restarts) log(`${p.name}: el kubelet reinició el contenedor (${p.restarts} reinicios)`, 'bad');
+        if (!o.ready && p.ready) log(`${p.name} está listo y entra al balanceo`, 'ok');
+        if (o.ready && !p.ready) log(`${p.name} ya no está listo y sale del balanceo`, 'warn');
+      }
+    }
+    for (const [n] of podsPrev) if (!m.has(n)) log(`Pod ${n} eliminado`, 'bad');
+  }
+  podsPrev = m;
+}
+
+function renderPods(pods) {
+  const order = ['frontend', 'backend', 'redis'];
+  const html = order.map(app => {
+    const list = pods.filter(p => p.app === app).sort((a, b) => a.name.localeCompare(b.name));
+    if (!list.length) return '';
+    return `<div class="grp"><small>${app} · ${list.length} pod${list.length > 1 ? 's' : ''}</small><div class="tiles">` +
+      list.map(p => {
+        const [cls, label] = podState(p);
+        return `<div class="tile ${cls}"><div class="n" title="${p.name}">${p.name}</div>
+          <div class="m">${label} · ${p.restarts} reinicios</div>
+          <div class="m">${p.node || '–'} · ${fmtAge(p.age)}</div>
+          <button data-del="${p.name}" aria-label="Eliminar ${p.name}">×</button></div>`;
+      }).join('') + '</div></div>';
+  }).join('');
+  $('#pods').innerHTML = html;
+}
+
+function renderHpa(h) {
+  if (!h) { $('#hpa').textContent = 'HPA no disponible'; return; }
+  $('#hpa').innerHTML = `Backend: <b>${h.current}</b> réplicas (deseadas <b>${h.desired}</b>, rango ${h.min}–${h.max}) · CPU <b>${h.cpu ?? '?'}%</b> de ${h.target}%`;
+  if (hpaDesired !== undefined && h.desired !== hpaDesired)
+    log(`El HPA cambió las réplicas deseadas del backend: ${hpaDesired} → ${h.desired}`, 'add');
+  hpaDesired = h.desired;
+}
+
+async function pollCluster() {
+  try {
+    const r = await fetch('/api/cluster');
+    if (!r.ok) throw 0;
+    const c = await r.json();
+    diff(c.pods); renderPods(c.pods); renderHpa(c.hpa);
+  } catch { $('#hpa').textContent = 'Sin respuesta del backend…'; }
+}
+
+function renderTraffic() {
+  const now = Date.now();
+  const rec = win.filter(w => now - w.t < 10000);
+  const last5 = win.filter(w => now - w.t < 5000);
+  $('#rps').textContent = (last5.length / 5).toFixed(1);
+  $('#lat').textContent = rec.length ? Math.round(rec.reduce((a, w) => a + w.ms, 0) / rec.length) + ' ms' : '0 ms';
+  const errs = rec.filter(w => !w.ok).length;
+  $('#errs').textContent = errs;
+  const by = {};
+  rec.forEach(w => by[w.pod] = (by[w.pod] || 0) + 1);
+  const max = Math.max(1, ...Object.values(by));
+  $('#bars').innerHTML = Object.entries(by).sort().map(([pod, n]) =>
+    `<div class="bar ${pod === 'error' ? 'err' : ''}"><span title="${pod}">${pod}</span><span><i style="width:${(n / max) * 100}%"></i></span><span>${n}</span></div>`
+  ).join('') || '<p class="h">Sin tráfico. Activa el tráfico constante para ver el balanceo.</p>';
+}
+
+let timer = null;
+$('#traffic').onclick = e => {
+  const on = e.target.classList.toggle('on');
+  e.target.textContent = on ? 'Detener tráfico' : 'Enviar tráfico constante';
+  clearInterval(timer);
+  if (on) timer = setInterval(() => hit('/api/info'), 1000 / +$('#rate').value);
+};
+$('#rate').onchange = () => { if ($('#traffic').classList.contains('on')) { clearInterval(timer); timer = setInterval(() => hit('/api/info'), 1000 / +$('#rate').value); } };
+
+const loops = [];
+$('#vus').oninput = e => {
+  const n = +e.target.value;
+  $('#vusn').textContent = n;
+  while (loops.length < n) { const l = { stop: false }; loops.push(l); (async () => { while (!l.stop) { await hit('/api/work?ms=80'); } })(); }
+  while (loops.length > n) loops.pop().stop = true;
+};
+
+const fault = (id, path, msg, kind) => $(id).onclick = async () => {
+  const j = await hit(path, { method: 'POST' });
+  if (j) log(msg(j.pod), kind);
+};
+fault('#crash', '/api/crash', p => `Tumbaste ${p}: Kubernetes lo reiniciará`, 'bad');
+fault('#sick', '/api/sick', p => `${p} fallará su liveness probe y será reiniciado en unos segundos`, 'warn');
+fault('#unready', '/api/unready', p => `${p} fallará su readiness probe y saldrá del balanceo sin reiniciarse`, 'warn');
+
+$('#pods').onclick = async e => {
+  const n = e.target.dataset && e.target.dataset.del;
+  if (!n) return;
+  log(`Pediste borrar ${n}; el controlador creará un reemplazo`, 'warn');
+  await fetch('/api/pods/delete?name=' + encodeURIComponent(n), { method: 'POST' });
+  pollCluster();
+};
+
+pollCluster();
+setInterval(pollCluster, 1000);
+setInterval(renderTraffic, 500);
+</script>
+</body>
+</html>
