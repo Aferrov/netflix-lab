@@ -1,96 +1,209 @@
-# Laboratorio Kubernetes: frontend, backend, Redis y pruebas de estrés
+# Laboratorio Cloud: Arquitectura Resiliente en Kubernetes con Infraestructura como Código (IaC)
 
-Cuatro piezas en un clúster local:
+Este proyecto implementa una arquitectura de microservicios en **Kubernetes** gestionada de forma 100% declarativa mediante **Terraform (Infraestructura como Código - IaC)**, siguiendo los principios y patrones de diseño del libro *"Infrastructure as Code"* (Kief Morris, 2da Edición).
 
-| Pieza | Qué es | Réplicas |
-|---|---|---|
-| `frontend` | nginx con un dashboard que muestra pods, HPA y tráfico en vivo | 2 |
-| `backend` | API en Node.js (sin dependencias) que además consulta la API de Kubernetes | 3 (hasta 10 con HPA) |
-| `redis` | contador de visitas persistente (PVC) | 1 |
-| `k6-stress` | Job de Kubernetes que genera la prueba de carga | bajo demanda |
+Incluye autoescalado horizontal (**HPA**), tolerancia a fallos, balanceo de carga en múltiples nodos, almacenamiento persistente (**PVC**), inyección de caos y una suite de pruebas de estrés automáticas con **Grafana k6**.
 
-## Requisitos
+---
 
-Docker, `kubectl` y un clúster local: `kind` (recomendado, permite varios nodos) o `minikube`.
+## 🏛️ 1. Arquitectura del Sistema
 
-## 1. Crear el clúster
+El sistema se compone de dos capas desacopladas (**Composición de Stacks**):
 
-```bash
-# kind: 1 control-plane + 2 workers (para ver pods repartidos entre nodos)
-kind create cluster --name netflix-lab --config kind-config.yaml
+| Capa / Módulo | Componente | Descripción | Réplicas |
+|---|---|---|---|
+| **Platform Stack** (`modules/cluster`) | **KinD Cluster** | Clúster multi-nodo local (1 control-plane + 2 workers). | 3 nodos |
+| **Platform Stack** (`modules/cluster`) | **metrics-server** | Agente de telemetría para permitir lectura de CPU en el HPA. | 1 |
+| **App Stack** (`modules/application`) | **frontend** | Nginx que sirve un Dashboard interactivo de observabilidad y caos. | 2 |
+| **App Stack** (`modules/application`) | **backend** | API Node.js (sin dependencias) con RBAC para consultar la API de k8s. | 3 a 10 (HPA) |
+| **App Stack** (`modules/application`) | **redis** | Base de datos persistente con volumen `ReadWriteOnce` (PVC). | 1 |
+| **Testing** | **k6-stress** | Job de Kubernetes para pruebas de estrés bajo demanda. | 50 VUs |
 
-# metrics-server: necesario para que el HPA lea el CPU
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-kubectl patch -n kube-system deployment metrics-server --type=json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
-
-# minikube en su lugar:  minikube start --nodes 3 && minikube addons enable metrics-server
+```
+                       [ Navegador / Usuario ]
+                                  │
+                       :8080 (port-forward)
+                                  ▼
+                    ┌───────────────────────────┐
+                    │     Service: frontend     │
+                    │   (Nginx - 2 réplicas)    │
+                    └─────────────┬─────────────┘
+                                  │ proxy_pass /api/
+                                  ▼
+                    ┌───────────────────────────┐
+                    │     Service: backend      │
+                    │  (Node.js - 3 a 10 pods)  │◄─── [ HPA: CPU > 50% ]
+                    └──┬─────────────────────┬──┘
+                       │                     │
+      TCP / RESP direct│                     │ In-cluster RBAC API
+                       ▼                     ▼
+             ┌──────────────────┐    ┌─────────────────────┐
+             │  Service: redis  │    │  Kubernetes API     │
+             │   (PVC 100 Mi)   │    │  (Pods, HPA Status) │
+             └──────────────────┘    └─────────────────────┘
 ```
 
-## 2. Construir y desplegar
+---
 
+## 📋 2. Requisitos Previos
+
+1. **Docker:** Servicio de contenedores activo (`sudo systemctl start docker` o Docker Desktop).
+2. **Terraform:** v1.5.0 o superior (`terraform -version`).
+3. **kubectl:** CLI de Kubernetes (`kubectl version --client`).
+4. **kind:** Kubernetes in Docker (`kind version`).
+
+---
+
+## 🚀 3. Guía de Ejecución desde Cero con Terraform
+
+Toda la infraestructura (creación del clúster, instalación de telemetría, compilación de imágenes Docker y despliegue de microservicios) se orquesta de forma declarativa e idempotente.
+
+### Paso 1: Ingresar a la carpeta de Terraform
 ```bash
-./deploy.sh
-kubectl -n netflix-lab port-forward svc/frontend 8080:80
+cd terraform
 ```
 
-Abre http://localhost:8080. En otra terminal deja corriendo:
-
+### Paso 2: Inicializar el Stack
+Descarga los proveedores (`tehcyx/kind`, `hashicorp/kubernetes`, `hashicorp/null`) e inicializa los módulos:
 ```bash
-kubectl -n netflix-lab get pods -o wide -w
+terraform init
 ```
 
-## 3. Demos
-
-### A. Cómo Kubernetes gestiona los contenedores
+### Paso 3: Previsualizar los Cambios (*Speculative Run* - Cap. 9)
 ```bash
-kubectl -n netflix-lab get deploy,rs,pods,svc,hpa
-kubectl -n netflix-lab describe deploy backend       # réplicas, estrategia, probes
-kubectl -n netflix-lab get endpoints backend         # IPs de los pods que reciben tráfico
+terraform plan -var-file=environments/prod.tfvars
 ```
-En el dashboard, activa "Enviar tráfico constante": las barras muestran cómo el Service reparte peticiones entre los pods del backend.
+*Se mostrarán los 17 recursos que Terraform creará de forma ordenada respetando el grafo de dependencias.*
 
-### B. Tolerancia a fallos
-1. Con tráfico activo, borra un pod con la × del dashboard (o `kubectl delete pod <nombre>`). El ReplicaSet crea otro y el tráfico casi no se interrumpe.
-2. **Crash:** botón "Tumbar un pod". El proceso termina con error y el kubelet reinicia el contenedor (sube el contador de reinicios).
-3. **Liveness:** botón "Pod enfermo". `/healthz` devuelve 500; tras 3 fallos el kubelet lo reinicia.
-4. **Readiness:** botón "Pod no listo". El pod sigue vivo pero sale de `kubectl get endpoints backend`, así que no recibe tráfico.
-5. **Redis caído:** `kubectl -n netflix-lab scale deploy redis --replicas=0`. El backend sigue respondiendo (modo degradado, el dashboard dice "Redis caído"). Al volver a 1, el contador continúa donde estaba gracias al volumen persistente.
-6. **Nodo caído:** `kubectl drain <worker> --ignore-daemonsets --delete-emptydir-data`. Los pods se mueven a otro nodo y el PodDisruptionBudget garantiza al menos 2 réplicas del backend. Al final: `kubectl uncordon <worker>`.
-
-### C. Escalabilidad
+### Paso 4: Desplegar la Infraestructura (*Apply*)
 ```bash
-kubectl -n netflix-lab scale deploy backend --replicas=6    # manual
-kubectl -n netflix-lab get hpa -w                           # automática
+terraform apply -var-file=environments/prod.tfvars -auto-approve
+```
+*Tiempo estimado: ~1.5 a 2 minutos.* Al finalizar imprimirá:
+```text
+Apply complete! Resources: 17 added, 0 changed, 0 destroyed.
 ```
 
-### D. Prueba de estrés
-Ligera, desde el dashboard: mueve el control "Usuarios de estrés".
+---
 
-Seria, con k6 dentro del clúster (2.5 minutos, hasta 50 usuarios virtuales):
+## 🖥️ 4. Acceso al Dashboard de Observabilidad y Caos
+
+Una vez concluido el despliegue, abre un túnel seguro hacia el frontend:
 ```bash
-kubectl apply -f loadtest/k6-job.yaml
-kubectl -n netflix-lab logs -f job/k6-stress
-```
-Mientras corre, mira `kubectl -n netflix-lab get hpa -w` y el dashboard: el CPU sube por encima del 50%, el HPA aumenta las réplicas (hasta 10) y la latencia se estabiliza. Al terminar, tras ~1 minuto, vuelve a 3 réplicas. k6 imprime al final si pasaron los umbrales (menos de 1% de errores, p95 < 1.5 s).
-
-Para repetirla: `kubectl -n netflix-lab delete job k6-stress` y aplica de nuevo.
-
-### E. Actualización sin caídas (rolling update)
-Con tráfico activo:
-```bash
-kubectl -n netflix-lab rollout restart deploy/backend
-kubectl -n netflix-lab rollout status deploy/backend
-kubectl -n netflix-lab rollout undo deploy/backend    # volver atrás
-```
-`maxUnavailable: 0` + readiness probe hacen que los pods nuevos entren antes de que salgan los viejos.
-
-## Limpieza
-```bash
-kind delete cluster --name netflix-lab
+kubectl --context kind-netflix-lab -n netflix-lab port-forward svc/frontend 8080:80
 ```
 
-## Notas
-- El backend tiene permisos (RBAC) para listar y borrar pods de su namespace, solo para el laboratorio.
-- Si el HPA muestra `<unknown>` en CPU, espera 1-2 minutos o revisa `kubectl -n kube-system get pods` (metrics-server).
-- Si cambias el código, reconstruye con `./deploy.sh` y ejecuta `kubectl -n netflix-lab rollout restart deploy/backend deploy/frontend`.
+Abre tu navegador en:
+👉 **http://localhost:8080**
+
+### Monitoreo en Tiempo Real (Terminal secundaria)
+Deja corriendo en otra terminal:
+```bash
+# Ver distribución de pods en los distintos workers
+kubectl --context kind-netflix-lab -n netflix-lab get pods -o wide -w
+
+# Ver el estado y escala del HPA
+kubectl --context kind-netflix-lab -n netflix-lab get hpa -w
+```
+
+---
+
+## 🧪 5. Demostraciones Prácticas del Laboratorio
+
+### A. Autoescalado Horizontal (HPA) con Prueba de Carga (k6)
+1. En el dashboard o en tu terminal, ejecuta el Job de carga:
+   ```bash
+   kubectl --context kind-netflix-lab apply -f ../loadtest/k6-job.yaml
+   ```
+2. Observa la salida en vivo de k6:
+   ```bash
+   kubectl --context kind-netflix-lab -n netflix-lab logs -f job/k6-stress
+   ```
+3. **Qué observar:** 
+   * k6 eleva la concurrencia a 50 usuarios virtuales quemando CPU en `/api/work?ms=80`.
+   * El uso de CPU sobrepasa el **50%**.
+   * El HPA escala automáticamente los pods del backend de **3 a hasta 10 réplicas**.
+   * Las barras del dashboard muestran la distribución de tráfico entre los nuevos pods.
+   * Al finalizar la prueba, tras la ventana de estabilización (60s), el clúster desescala a 3 pods.
+
+### B. Auto-recuperación (Self-Healing)
+* Con tráfico activo en el dashboard, haz clic en la **×** de cualquier pod del backend (o ejecuta `kubectl --context kind-netflix-lab -n netflix-lab delete pod <nombre>`).
+* El ReplicaSet detecta la desviación del estado deseado y crea inmediatamente un reemplazo sin interrumpir el servicio.
+
+### C. Pruebas de Salud (Liveness & Readiness Probes)
+* **Crash:** Clic en *"Tumbar un pod"*. El proceso finaliza con código de error y el kubelet lo reinicia inmediatamente (aumenta el contador de restarts).
+* **Liveness Fail:** Clic en *"Pod enfermo"*. `/healthz` responde HTTP 500; tras 3 fallos el kubelet destruye y reinicia el contenedor.
+* **Readiness Fail:** Clic en *"Pod no listo"*. `/ready` responde HTTP 503; el pod se mantiene vivo pero el Service lo retira de los endpoints para que no reciba tráfico.
+
+### D. Resiliencia de Datos y Modo Degradado (Redis)
+1. Apaga el pod de Redis:
+   ```bash
+   kubectl --context kind-netflix-lab -n netflix-lab scale deploy redis --replicas=0
+   ```
+2. El dashboard mostrará *"Redis caído"*, pero el backend no colapsa (funciona en **modo degradado**).
+3. Vuelve a encenderlo:
+   ```bash
+   kubectl --context kind-netflix-lab -n netflix-lab scale deploy redis --replicas=1
+   ```
+4. El nuevo pod se monta sobre el mismo **PersistentVolumeClaim (PVC)** y el contador de visitas continúa exactamente donde quedó.
+
+### E. Actualización sin Caídas (Zero-Downtime Rolling Update)
+```bash
+kubectl --context kind-netflix-lab -n netflix-lab rollout restart deploy/backend
+kubectl --context kind-netflix-lab -n netflix-lab rollout status deploy/backend
+```
+Gracias a `maxUnavailable: 0` y `maxSurge: 1`, los pods nuevos alcanzan el estado *Ready* antes de que se apaguen los anteriores.
+
+---
+
+## 🧹 6. Limpieza y Destrucción del Entorno (*Teardown*)
+
+Para liberar todos los recursos de la máquina y cumplir con el ciclo de vida de IaC:
+```bash
+cd terraform
+terraform destroy -var-file=environments/prod.tfvars -auto-approve
+```
+
+---
+
+## 📁 7. Estructura del Repositorio
+
+```text
+netflix-lab/
+├── README.md                            # Guía general de operación
+├── EXPLICACION_IAC_PROYECTO.md          # Documento teórico-técnico detallado para el equipo
+├── kind-config.yaml                     # Configuración base de KinD (referencia)
+├── backend/                             # Microservicio API (Node.js sin dependencias)
+│   ├── server.js
+│   └── Dockerfile
+├── frontend/                            # Dashboard interactivo (Nginx + JS Vanilla)
+│   ├── index.html
+│   ├── nginx.conf
+│   └── Dockerfile
+├── loadtest/                            # Script de prueba de carga
+│   └── k6-job.yaml
+└── terraform/                           # INFRAESTRUCTURA COMO CÓDIGO (IaC)
+    ├── versions.tf                      # Providers (kind, kubernetes, null)
+    ├── variables.tf                     # Variables de entrada parametrizables
+    ├── main.tf                          # Composición de Stacks
+    ├── outputs.tf                       # Comandos de acceso generados
+    ├── environments/                    # Patrón Stack Configuration Files (Cap. 7)
+    │   ├── dev.tfvars                   # Configuración para desarrollo (1 worker, 1 réplica)
+    │   └── prod.tfvars                  # Configuración para producción (2 workers, HPA 3-10)
+    └── modules/
+        ├── cluster/                     # Stack de Plataforma (Cap. 3 y 5)
+        │   ├── main.tf                  # Cluster KinD, metrics-server, carga de imágenes
+        │   ├── variables.tf
+        │   ├── outputs.tf
+        │   └── versions.tf
+        └── application/                 # Stack de Cargas de Trabajo (Cap. 5)
+            ├── namespace.tf             # Namespace aislado con labels
+            ├── rbac.tf                  # ServiceAccount, Role, RoleBinding
+            ├── redis.tf                 # PVC, Deployment Recreate, Service
+            ├── backend.tf               # Deployment RollingUpdate, Service, HPA v2, PDB v1
+            ├── frontend.tf              # Deployment, Service
+            ├── loadtest.tf              # ConfigMap k6, Job condicional
+            ├── variables.tf
+            ├── outputs.tf
+            └── versions.tf
+```
