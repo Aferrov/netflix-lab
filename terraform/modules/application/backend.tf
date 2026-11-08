@@ -48,7 +48,7 @@ resource "kubernetes_deployment" "backend" {
 
         container {
           name              = "backend"
-          image             = "netflix-lab/backend:1.0"
+          image             = var.backend_image
           image_pull_policy = "IfNotPresent"
 
           port {
@@ -163,7 +163,7 @@ resource "kubernetes_pod_disruption_budget_v1" "backend" {
   }
 
   spec {
-    min_available = "2"
+    min_available = tostring(min(2, var.backend_min_replicas))
     selector {
       match_labels = {
         app = "backend"

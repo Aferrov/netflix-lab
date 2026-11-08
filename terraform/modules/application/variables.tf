@@ -39,3 +39,27 @@ variable "enable_loadtest_job" {
   type        = bool
   default     = false
 }
+
+variable "backend_image" {
+  description = "Imagen del backend; en EKS se usa URI de ECR con tag inmutable"
+  type        = string
+  default     = "netflix-lab/backend:1.0"
+}
+
+variable "frontend_image" {
+  description = "Imagen del frontend; en EKS se usa URI de ECR con tag inmutable"
+  type        = string
+  default     = "netflix-lab/frontend:1.0"
+}
+
+variable "redis_storage_class_name" {
+  description = "StorageClass de Redis; null conserva la clase predeterminada de KinD"
+  type        = string
+  default     = null
+}
+
+variable "redis_storage_size" {
+  description = "Tamaño del PVC de Redis"
+  type        = string
+  default     = "100Mi"
+}

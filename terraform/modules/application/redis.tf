@@ -8,10 +8,11 @@ resource "kubernetes_persistent_volume_claim" "redis_data" {
   }
 
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes       = ["ReadWriteOnce"]
+    storage_class_name = var.redis_storage_class_name
     resources {
       requests = {
-        storage = "100Mi"
+        storage = var.redis_storage_size
       }
     }
   }

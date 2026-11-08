@@ -26,7 +26,7 @@ resource "kubernetes_deployment" "frontend" {
       spec {
         container {
           name              = "frontend"
-          image             = "netflix-lab/frontend:1.0"
+          image             = var.frontend_image
           image_pull_policy = "IfNotPresent"
 
           port {
