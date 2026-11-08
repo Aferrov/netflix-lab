@@ -1,16 +1,49 @@
-# Terraform
-**/.terraform/*
+# Terraform: proveedores descargados, estado, planes y archivos locales
+**/.terraform/
 *.tfstate
 *.tfstate.*
+terraform.tfstate.d/
+*.tfplan
+*.tfplan.*
+tfplan
+plan.out
 crash.log
 crash.*.log
-*.tfvars
-!*.example.tfvars
-*.secret.tfvars
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 .terraformrc
 terraform.rc
-.terraform.lock.hcl
+
+# Los .tfvars sin secretos y .terraform.lock.hcl se pueden versionar
+*secret*.tfvars
+*secret*.tfvars.json
+
+# Credenciales y configuraciones locales
+.env
+.env.*
+!.env.example
+!.env.*.example
+.aws/
+.kube/
+kubeconfig
+*.kubeconfig
+
+# Dependencias y archivos generados por Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos generados por Python (mock_server.py)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Herramientas descargadas y archivos del editor/sistema
+/kubectl
+.idea/
+.DS_Store
+*.swp
