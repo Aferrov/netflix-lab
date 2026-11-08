@@ -1,5 +1,7 @@
 # Laboratorio Cloud: Arquitectura Resiliente en Kubernetes con Infraestructura como Código (IaC)
 
+**Migración a AWS:** el laboratorio EKS para un crédito AWS Academy de USD 50 se encuentra en [AWS_MIGRACION.md](AWS_MIGRACION.md). La guía de abajo corresponde al entorno local KinD.
+
 Este proyecto implementa una arquitectura de microservicios en **Kubernetes** gestionada de forma 100% declarativa mediante **Terraform (Infraestructura como Código - IaC)**, siguiendo los principios y patrones de diseño del libro *"Infrastructure as Code"* (Kief Morris, 2da Edición).
 
 Incluye autoescalado horizontal (**HPA**), tolerancia a fallos, balanceo de carga en múltiples nodos, almacenamiento persistente (**PVC**), inyección de caos y una suite de pruebas de estrés automáticas con **Grafana k6**.

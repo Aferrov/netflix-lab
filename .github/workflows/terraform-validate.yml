@@ -1,0 +1,27 @@
+name: Terraform validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stack: [terraform, terraform/aws/bootstrap, terraform/aws/platform, terraform/aws/application]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Format
+        run: terraform fmt -check -recursive
+        working-directory: ${{ matrix.stack }}
+      - name: Initialize providers without backend
+        run: terraform init -backend=false -input=false
+        working-directory: ${{ matrix.stack }}
+      - name: Validate
+        run: terraform validate -no-color
+        working-directory: ${{ matrix.stack }}

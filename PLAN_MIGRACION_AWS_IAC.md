@@ -1,5 +1,7 @@
 # Plan de migración a AWS y mejora de prácticas IaC
 
+> Implementación para el crédito AWS Academy de USD 50: consulta [AWS_MIGRACION.md](AWS_MIGRACION.md). El entorno `dev` evita NAT Gateway y Load Balancer, usa un nodo EKS público con acceso a la API restringido por CIDR y se destruye después de cada sesión. Las subredes privadas y el entorno `prod` descritos abajo son objetivos para un presupuesto mayor.
+
 ## Objetivo
 
 Migrar el laboratorio actual basado en KinD hacia AWS usando Amazon EKS, manteniendo Terraform como herramienta principal de Infrastructure as Code y aplicando las prácticas pendientes del libro *Infrastructure as Code* de Kief Morris.
