@@ -2,9 +2,9 @@
 
 Esta implementación conserva `terraform/` como laboratorio KinD y añade `terraform/aws/` para EKS. `dev` está pensado para sesiones cortas: dos subredes públicas en distintas zonas, un nodo administrado `t3.medium`, ECR, S3 para estado, métricas de Kubernetes y logs de EKS con retención de siete días. No crea NAT Gateway ni Load Balancer. El dashboard se consulta con `kubectl port-forward`.
 
-**AWS Academy:** el Learner Lab del proyecto permite EKS, pero no crear roles IAM libremente. Este Terraform **no crea roles IAM**: exige `cluster_role_arn` y `node_role_arn` existentes. En tu cuenta aparecen `LabEksClusterRole` y `LabRole`; el primero corresponde al clúster y el segundo solo podrá usarse para nodos si confía en `ec2.amazonaws.com`, tiene permisos EKS/ECR y puedes pasarlo con `iam:PassRole`. Confirma estos puntos antes de `apply`. No compartas credenciales ni archivos de sesión.
+**AWS Academy:** el Learner Lab del proyecto permite EKS, pero no crear roles IAM libremente. Este Terraform **no crea roles IAM**: exige `cluster_role_arn` y `node_role_arn` existentes. En tu cuenta aparecen `LabEksClusterRole` para el clúster y `LabEksNodeRole` para los nodos. Debes poder pasarlos a EKS con `iam:PassRole`. No compartas credenciales ni archivos de sesión.
 
-Para diagnosticar IAM sin crear recursos, ejecuta `aws sts get-caller-identity`, `aws iam get-role --role-name LabEksClusterRole --query 'Role.AssumeRolePolicyDocument'` y `aws iam get-role --role-name LabRole --query 'Role.AssumeRolePolicyDocument'`. El rol del clúster debe confiar en `eks.amazonaws.com` y el de nodos en `ec2.amazonaws.com`. Si falta la confianza o `iam:PassRole`, un administrador del laboratorio tendrá que habilitarlo. Un error `AccessDenied` en `eks:CreateCluster` bloquea EKS aun si Terraform es válido.
+Para diagnosticar IAM sin crear recursos, ejecuta `aws sts get-caller-identity`, `aws iam get-role --role-name LabEksClusterRole --query 'Role.AssumeRolePolicyDocument'` y `aws iam get-role --role-name LabEksNodeRole --query 'Role.AssumeRolePolicyDocument'`. El rol del clúster debe confiar en `eks.amazonaws.com` y el de nodos en `ec2.amazonaws.com`. Si falta la confianza o `iam:PassRole`, un administrador del laboratorio tendrá que habilitarlo. Un error `AccessDenied` en `eks:CreateCluster` bloquea EKS aun si Terraform es válido.
 
 El ARN de `get-caller-identity` identifica la sesión con la que llamas a AWS; **no** sustituye los roles de servicio de EKS. El rol de nodos debe ser diferente del rol del clúster ([requisito de AWS](https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html)). La lista exacta de servicios permitidos depende del Learner Lab; consulta **Readme → Service usage and other restrictions** ([guía de AWS Academy](https://d1.awsstatic.com/AWS%20Academy%20Learner%20Lab%20Educator%20Guide.pdf)).
 
@@ -33,9 +33,9 @@ Ejecuta los comandos desde la raíz del repositorio. Sustituye el bucket por un 
 export AWS_REGION=us-east-1
 export STATE_BUCKET=netflix-lab-tfstate-TU_IDENTIFICADOR_UNICO
 export TF_VAR_api_access_cidrs='["TU_IP_PUBLICA/32"]'
-export TF_VAR_cluster_role_arn='arn:aws:iam::TU_CUENTA:role/LabEksClusterRole'
-export TF_VAR_node_role_arn='arn:aws:iam::TU_CUENTA:role/LabRole'
-aws sts get-caller-identity
+export ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+export TF_VAR_cluster_role_arn="arn:aws:iam::$ACCOUNT_ID:role/LabEksClusterRole"
+export TF_VAR_node_role_arn="arn:aws:iam::$ACCOUNT_ID:role/LabEksNodeRole"
 ```
 
 1. Crea el bucket de estado. El estado de `bootstrap` queda local en `terraform/aws/bootstrap/terraform.tfstate`; conserva ese archivo fuera del repositorio.
