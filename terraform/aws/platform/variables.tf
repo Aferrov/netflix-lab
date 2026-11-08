@@ -39,14 +39,15 @@ variable "node_count" {
   }
 }
 variable "cluster_role_arn" {
-  type    = string
-  default = null
+  description = "ARN del rol EKS Cluster precreado en Learner Lab"
+  type        = string
 }
 variable "node_role_arn" {
-  type    = string
-  default = null
+  description = "ARN del rol EKS Node precreado en Learner Lab"
+  type        = string
 }
 variable "ebs_csi_role_arn" {
-  type    = string
-  default = null
+  description = "ARN opcional de un rol existente para EBS CSI Pod Identity"
+  type        = string
+  default     = null
 }

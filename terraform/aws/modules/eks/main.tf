@@ -5,15 +5,17 @@ variable "api_access_cidrs" { type = list(string) }
 variable "node_instance_type" { type = string }
 variable "node_count" { type = number }
 variable "cluster_role_arn" {
-  type    = string
-  default = null
+  type = string
+  validation {
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+", var.cluster_role_arn))
+    error_message = "Indica el ARN del rol precreado para el clúster EKS."
+  }
 }
 variable "node_role_arn" {
-  type    = string
-  default = null
+  type = string
   validation {
-    condition     = var.node_role_arn == null || var.cluster_role_arn == null || var.node_role_arn != var.cluster_role_arn
-    error_message = "El rol de los nodos EKS debe ser distinto del rol del clúster."
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+", var.node_role_arn)) && var.node_role_arn != var.cluster_role_arn
+    error_message = "Indica un ARN de nodos EKS distinto del rol del clúster."
   }
 }
 variable "ebs_csi_role_arn" {
@@ -21,86 +23,9 @@ variable "ebs_csi_role_arn" {
   default = null
 }
 
-data "aws_iam_policy_document" "cluster_assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["eks.amazonaws.com"]
-    }
-  }
-}
-
-data "aws_iam_policy_document" "node_assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ec2.amazonaws.com"]
-    }
-  }
-}
-
-data "aws_iam_policy_document" "pod_assume" {
-  statement {
-    actions = ["sts:AssumeRole", "sts:TagSession"]
-    principals {
-      type        = "Service"
-      identifiers = ["pods.eks.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "cluster" {
-  count              = var.cluster_role_arn == null ? 1 : 0
-  name               = "${var.name}-cluster"
-  assume_role_policy = data.aws_iam_policy_document.cluster_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "cluster" {
-  count      = var.cluster_role_arn == null ? 1 : 0
-  role       = aws_iam_role.cluster[0].name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-}
-
-resource "aws_iam_role" "node" {
-  count              = var.node_role_arn == null ? 1 : 0
-  name               = "${var.name}-node"
-  assume_role_policy = data.aws_iam_policy_document.node_assume.json
-}
-
-locals {
-  node_policies = {
-    worker = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-    cni    = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-    ecr    = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
-  }
-  cluster_role = var.cluster_role_arn != null ? var.cluster_role_arn : aws_iam_role.cluster[0].arn
-  node_role    = var.node_role_arn != null ? var.node_role_arn : aws_iam_role.node[0].arn
-  ebs_role     = var.ebs_csi_role_arn != null ? var.ebs_csi_role_arn : aws_iam_role.ebs_csi[0].arn
-}
-
-resource "aws_iam_role_policy_attachment" "node" {
-  for_each   = var.node_role_arn == null ? local.node_policies : {}
-  role       = aws_iam_role.node[0].name
-  policy_arn = each.value
-}
-
-resource "aws_iam_role" "ebs_csi" {
-  count              = var.ebs_csi_role_arn == null ? 1 : 0
-  name               = "${var.name}-ebs-csi"
-  assume_role_policy = data.aws_iam_policy_document.pod_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "ebs_csi" {
-  count      = var.ebs_csi_role_arn == null ? 1 : 0
-  role       = aws_iam_role.ebs_csi[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-}
-
 resource "aws_eks_cluster" "this" {
   name     = var.name
-  role_arn = local.cluster_role
+  role_arn = var.cluster_role_arn
   version  = var.kubernetes_version
 
   access_config {
@@ -118,13 +43,12 @@ resource "aws_eks_cluster" "this" {
   }
 
   enabled_cluster_log_types = ["api", "audit", "authenticator"]
-  depends_on                = [aws_iam_role_policy_attachment.cluster]
 }
 
 resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${var.name}-workers"
-  node_role_arn   = local.node_role
+  node_role_arn   = var.node_role_arn
   subnet_ids      = var.subnet_ids
   instance_types  = [var.node_instance_type]
   capacity_type   = "ON_DEMAND"
@@ -137,23 +61,24 @@ resource "aws_eks_node_group" "this" {
   }
 
   update_config { max_unavailable = 1 }
-  depends_on = [aws_iam_role_policy_attachment.node]
 }
 
 resource "aws_eks_addon" "pod_identity" {
+  count        = var.ebs_csi_role_arn == null ? 0 : 1
   cluster_name = aws_eks_cluster.this.name
   addon_name   = "eks-pod-identity-agent"
   depends_on   = [aws_eks_node_group.this]
 }
 
 resource "aws_eks_addon" "ebs_csi" {
+  count        = var.ebs_csi_role_arn == null ? 0 : 1
   cluster_name = aws_eks_cluster.this.name
   addon_name   = "aws-ebs-csi-driver"
   pod_identity_association {
-    role_arn        = local.ebs_role
+    role_arn        = var.ebs_csi_role_arn
     service_account = "ebs-csi-controller-sa"
   }
-  depends_on = [aws_eks_addon.pod_identity, aws_iam_role_policy_attachment.ebs_csi]
+  depends_on = [aws_eks_addon.pod_identity]
 }
 
 resource "aws_eks_addon" "metrics_server" {
@@ -164,4 +89,4 @@ resource "aws_eks_addon" "metrics_server" {
 
 output "cluster_name" { value = aws_eks_cluster.this.name }
 output "cluster_endpoint" { value = aws_eks_cluster.this.endpoint }
-output "ebs_addon_id" { value = aws_eks_addon.ebs_csi.id }
+output "ebs_addon_id" { value = var.ebs_csi_role_arn == null ? null : aws_eks_addon.ebs_csi[0].id }
