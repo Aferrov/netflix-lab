@@ -20,7 +20,7 @@ Esta topología pública es deliberada para el laboratorio de bajo costo. La var
 
 ## Requisitos
 
-- Terraform >= 1.10, AWS CLI v2, Docker, `kubectl` y `bash`. En WSL, inicia Docker Desktop, activa **Settings → Resources → WSL Integration** para esta distribución y comprueba `docker info` antes de publicar imágenes.
+- Terraform >= 1.10, AWS CLI v2, Docker, `kubectl` y `bash`. En WSL, inicia Docker Desktop y activa **Settings → Resources → WSL Integration** para esta distribución. Si la integración falla pero el motor Windows funciona, `push-images.sh` usa `docker.exe` como alternativa.
 - Credenciales temporales de AWS Academy configuradas en el perfil/entorno de AWS CLI; verifica `aws sts get-caller-identity`.
 - Permisos para crear los servicios anteriores y una dirección IPv4 pública de administración.
 - Espacio de IP y cuota de EKS/EC2 disponibles en `us-east-1`.
