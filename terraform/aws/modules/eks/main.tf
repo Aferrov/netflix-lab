@@ -11,6 +11,10 @@ variable "cluster_role_arn" {
 variable "node_role_arn" {
   type    = string
   default = null
+  validation {
+    condition     = var.node_role_arn == null || var.cluster_role_arn == null || var.node_role_arn != var.cluster_role_arn
+    error_message = "El rol de los nodos EKS debe ser distinto del rol del clúster."
+  }
 }
 variable "ebs_csi_role_arn" {
   type    = string
