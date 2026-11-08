@@ -2,9 +2,9 @@
 
 Esta implementación conserva `terraform/` como laboratorio KinD y añade `terraform/aws/` para EKS. `dev` está pensado para sesiones cortas: dos subredes públicas en distintas zonas, un nodo administrado `t3.medium`, ECR, S3 para estado, métricas de Kubernetes y logs de EKS con retención de siete días. No crea NAT Gateway ni Load Balancer. El dashboard se consulta con `kubectl port-forward`.
 
-**AWS Academy:** el Learner Lab del proyecto permite EKS, pero no crear roles IAM libremente. Este Terraform **no crea roles IAM**: exige `cluster_role_arn` y `node_role_arn` existentes. En tu cuenta aparecen `LabEksClusterRole` para el clúster y `LabEksNodeRole` para los nodos. Debes poder pasarlos a EKS con `iam:PassRole`. No compartas credenciales ni archivos de sesión.
+**AWS Academy:** el Learner Lab del proyecto permite EKS, pero no crear roles IAM libremente. Este Terraform **no crea roles IAM**: exige `cluster_role_arn` y `node_role_arn` existentes. Los nombres reales de tu cuenta contienen un prefijo y un sufijo alrededor de `LabEksClusterRole` y `LabEksNodeRole`; el ARN debe incluir el nombre completo. Debes poder pasarlos a EKS con `iam:PassRole`. No compartas credenciales ni archivos de sesión.
 
-Para diagnosticar IAM sin crear recursos, ejecuta `aws sts get-caller-identity`, `aws iam get-role --role-name LabEksClusterRole --query 'Role.AssumeRolePolicyDocument'` y `aws iam get-role --role-name LabEksNodeRole --query 'Role.AssumeRolePolicyDocument'`. El rol del clúster debe confiar en `eks.amazonaws.com` y el de nodos en `ec2.amazonaws.com`. Si falta la confianza o `iam:PassRole`, un administrador del laboratorio tendrá que habilitarlo. Un error `AccessDenied` en `eks:CreateCluster` bloquea EKS aun si Terraform es válido.
+Para diagnosticar IAM sin crear recursos, ejecuta `aws sts get-caller-identity` y, después de definir las variables de abajo, `aws iam get-role --role-name "$EKS_CLUSTER_ROLE_NAME"` y `aws iam get-role --role-name "$EKS_NODE_ROLE_NAME"`. El rol del clúster debe confiar en `eks.amazonaws.com` y el de nodos en `ec2.amazonaws.com`. Si falta la confianza o `iam:PassRole`, un administrador del laboratorio tendrá que habilitarlo. Un error `AccessDenied` en `eks:CreateCluster` bloquea EKS aun si Terraform es válido.
 
 El ARN de `get-caller-identity` identifica la sesión con la que llamas a AWS; **no** sustituye los roles de servicio de EKS. El rol de nodos debe ser diferente del rol del clúster ([requisito de AWS](https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html)). La lista exacta de servicios permitidos depende del Learner Lab; consulta **Readme → Service usage and other restrictions** ([guía de AWS Academy](https://d1.awsstatic.com/AWS%20Academy%20Learner%20Lab%20Educator%20Guide.pdf)).
 
@@ -27,15 +27,17 @@ Esta topología pública es deliberada para el laboratorio de bajo costo. La var
 
 ## Despliegue de `dev`
 
-Ejecuta los comandos desde la raíz del repositorio. Sustituye el bucket por un nombre globalmente único y la IP por tu dirección pública real.
+Ejecuta los comandos desde la raíz del repositorio. Sustituye el bucket por un nombre globalmente único y la IP por tu dirección pública real. Los nombres de rol siguientes son los que compartiste; verifica cada carácter en IAM antes de usarlos.
 
 ```bash
 export AWS_REGION=us-east-1
 export STATE_BUCKET=netflix-lab-tfstate-TU_IDENTIFICADOR_UNICO
 export TF_VAR_api_access_cidrs='["TU_IP_PUBLICA/32"]'
 export ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-export TF_VAR_cluster_role_arn="arn:aws:iam::$ACCOUNT_ID:role/LabEksClusterRole"
-export TF_VAR_node_role_arn="arn:aws:iam::$ACCOUNT_ID:role/LabEksNodeRole"
+export EKS_CLUSTER_ROLE_NAME='c237965a5969465l18246291t1w828868-LabEksClusterRole-tovXmHFhlDty'
+export EKS_NODE_ROLE_NAME='c237965a5969465l18246291t1w828868888-LabEksNodeRole-p9TMKVotnj47'
+export TF_VAR_cluster_role_arn="arn:aws:iam::$ACCOUNT_ID:role/$EKS_CLUSTER_ROLE_NAME"
+export TF_VAR_node_role_arn="arn:aws:iam::$ACCOUNT_ID:role/$EKS_NODE_ROLE_NAME"
 ```
 
 1. Crea el bucket de estado. El estado de `bootstrap` queda local en `terraform/aws/bootstrap/terraform.tfstate`; conserva ese archivo fuera del repositorio.
