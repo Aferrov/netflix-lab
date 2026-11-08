@@ -63,3 +63,9 @@ variable "redis_storage_size" {
   type        = string
   default     = "100Mi"
 }
+
+variable "redis_persistence_enabled" {
+  description = "Usa PVC para Redis; false usa emptyDir temporal en Learner Lab"
+  type        = bool
+  default     = true
+}

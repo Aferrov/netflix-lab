@@ -1,5 +1,6 @@
 # Almacenamiento persistente para Redis (PVC)
 resource "kubernetes_persistent_volume_claim" "redis_data" {
+  count            = var.redis_persistence_enabled ? 1 : 0
   wait_until_bound = false
 
   metadata {
@@ -80,10 +81,21 @@ resource "kubernetes_deployment" "redis" {
           }
         }
 
-        volume {
-          name = "data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.redis_data.metadata[0].name
+        dynamic "volume" {
+          for_each = var.redis_persistence_enabled ? [1] : []
+          content {
+            name = "data"
+            persistent_volume_claim {
+              claim_name = kubernetes_persistent_volume_claim.redis_data[0].metadata[0].name
+            }
+          }
+        }
+
+        dynamic "volume" {
+          for_each = var.redis_persistence_enabled ? [] : [1]
+          content {
+            name = "data"
+            empty_dir {}
           }
         }
       }

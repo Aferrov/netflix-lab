@@ -1,16 +1,18 @@
 # Laboratorio IaC en AWS (crédito de USD 50)
 
-Esta implementación conserva `terraform/` como laboratorio KinD y añade `terraform/aws/` para EKS. `dev` está pensado para sesiones cortas: dos subredes públicas en distintas zonas, un nodo administrado `t3.medium`, ECR, EBS `gp3`, S3 para estado, métricas de Kubernetes y logs de EKS con retención de siete días. No crea NAT Gateway ni Load Balancer. El dashboard se consulta con `kubectl port-forward`.
+Esta implementación conserva `terraform/` como laboratorio KinD y añade `terraform/aws/` para EKS. `dev` está pensado para sesiones cortas: dos subredes públicas en distintas zonas, un nodo administrado `t3.medium`, ECR, S3 para estado, métricas de Kubernetes y logs de EKS con retención de siete días. No crea NAT Gateway ni Load Balancer. El dashboard se consulta con `kubectl port-forward`.
 
-**AWS Academy:** antes de ejecutar `apply`, comprueba que el laboratorio permita `eks`, `ec2`, `iam:CreateRole`/`iam:PassRole`, `ecr`, `s3` y `logs`. Algunas cuentas Academy restringen servicios o IAM; si los roles ya existen, se pueden pasar `cluster_role_arn`, `node_role_arn` y `ebs_csi_role_arn` al stack de plataforma. Cada rol debe tener la política de confianza y los permisos correctos; un `LabRole` genérico puede no servir. No compartas credenciales ni archivos de sesión.
+**AWS Academy:** el Learner Lab del proyecto permite EKS, pero no crear roles IAM libremente. Este Terraform **no crea roles IAM**: exige `cluster_role_arn` y `node_role_arn` existentes. En tu cuenta aparecen `LabEksClusterRole` y `LabRole`; el primero corresponde al clúster y el segundo solo podrá usarse para nodos si confía en `ec2.amazonaws.com`, tiene permisos EKS/ECR y puedes pasarlo con `iam:PassRole`. Confirma estos puntos antes de `apply`. No compartas credenciales ni archivos de sesión.
 
-Para diagnosticar IAM sin crear recursos, ejecuta `aws sts get-caller-identity` y, si existe `LabRole`, `aws iam get-role --role-name LabRole --query 'Role.AssumeRolePolicyDocument'`. El rol del control plane debe confiar en `eks.amazonaws.com`, el de nodos en `ec2.amazonaws.com` y el de EBS CSI en `pods.eks.amazonaws.com`. Si la cuenta no permite crear estos roles ni pasar roles compatibles a EKS, se necesita que el administrador del laboratorio los habilite. Un error `AccessDenied` en `eks:CreateCluster` bloquea EKS aun si el código Terraform es válido.
+Para diagnosticar IAM sin crear recursos, ejecuta `aws sts get-caller-identity`, `aws iam get-role --role-name LabEksClusterRole --query 'Role.AssumeRolePolicyDocument'` y `aws iam get-role --role-name LabRole --query 'Role.AssumeRolePolicyDocument'`. El rol del clúster debe confiar en `eks.amazonaws.com` y el de nodos en `ec2.amazonaws.com`. Si falta la confianza o `iam:PassRole`, un administrador del laboratorio tendrá que habilitarlo. Un error `AccessDenied` en `eks:CreateCluster` bloquea EKS aun si Terraform es válido.
 
-El ARN de `get-caller-identity` identifica la sesión con la que llamas a AWS; **no** sustituye los roles de servicio de EKS. El rol de nodos debe ser diferente del rol del clúster ([requisito de AWS](https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html)). Un único `LabRole` precreado no basta por sí solo para los tres roles. La lista exacta de servicios permitidos depende del tipo y configuración del Learner Lab; consulta su sección **Readme → Service usage and other restrictions** antes de aplicar Terraform ([guía de AWS Academy](https://d1.awsstatic.com/AWS%20Academy%20Learner%20Lab%20Educator%20Guide.pdf)).
+El ARN de `get-caller-identity` identifica la sesión con la que llamas a AWS; **no** sustituye los roles de servicio de EKS. El rol de nodos debe ser diferente del rol del clúster ([requisito de AWS](https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html)). La lista exacta de servicios permitidos depende del Learner Lab; consulta **Readme → Service usage and other restrictions** ([guía de AWS Academy](https://d1.awsstatic.com/AWS%20Academy%20Learner%20Lab%20Educator%20Guide.pdf)).
+
+No hay un rol EBS CSI/Pod Identity precreado en este lab. Por eso `dev` usa `emptyDir` para Redis: los datos sobreviven a un reinicio del contenedor dentro del mismo pod, pero se pierden al recrear el pod o destruir el clúster. El laboratorio KinD mantiene su PVC. En una cuenta con un rol EBS CSI compatible, se puede pasar `ebs_csi_role_arn` a la plataforma y activar `redis_persistence_enabled=true` en la aplicación para usar PVC `gp3` cifrado.
 
 ## Costo y decisión de arquitectura
 
-En `us-east-1`, una estimación para `dev` es **USD 0,15 por hora**: EKS USD 0,10/h, un `t3.medium` alrededor de USD 0,0416/h, una IPv4 pública USD 0,005/h y aproximadamente USD 0,0023/h de EBS (20 GiB de disco del nodo y 1 GiB para Redis). Ocho horas cuestan cerca de USD 1,20; un mes encendido supera USD 100. Se suman ECR, S3, CloudWatch, transferencia de datos e impuestos si aplican. El crédito **no es un límite automático de gasto**. Destruye el entorno al acabar cada sesión. Los precios y permisos varían por región y cuenta.
+En `us-east-1`, una estimación para `dev` es **USD 0,15 por hora**: EKS USD 0,10/h, un `t3.medium` alrededor de USD 0,0416/h, una IPv4 pública USD 0,005/h y aproximadamente USD 0,0022/h de EBS para el disco de 20 GiB del nodo. Ocho horas cuestan cerca de USD 1,20; un mes encendido supera USD 100. Se suman ECR, S3, CloudWatch, transferencia de datos e impuestos si aplican. El crédito **no es un límite automático de gasto**. Destruye el entorno al acabar cada sesión. Los precios y permisos varían por región y cuenta.
 
 Fuentes: [EKS](https://aws.amazon.com/eks/pricing/), [EC2](https://docs.aws.amazon.com/prescriptive-guidance/latest/optimize-costs-microsoft-workloads/right-size-selection.html), [IPv4/NAT](https://aws.amazon.com/vpc/pricing/), [EBS](https://aws.amazon.com/ebs/pricing/) y [limitaciones de Learner Lab](https://d1.awsstatic.com/AWS%20Academy%20Learner%20Lab%20Educator%20Guide.pdf).
 
@@ -31,6 +33,8 @@ Ejecuta los comandos desde la raíz del repositorio. Sustituye el bucket por un 
 export AWS_REGION=us-east-1
 export STATE_BUCKET=netflix-lab-tfstate-TU_IDENTIFICADOR_UNICO
 export TF_VAR_api_access_cidrs='["TU_IP_PUBLICA/32"]'
+export TF_VAR_cluster_role_arn='arn:aws:iam::TU_CUENTA:role/LabEksClusterRole'
+export TF_VAR_node_role_arn='arn:aws:iam::TU_CUENTA:role/LabRole'
 aws sts get-caller-identity
 ```
 
@@ -41,7 +45,7 @@ terraform -chdir=terraform/aws/bootstrap init
 terraform -chdir=terraform/aws/bootstrap apply -var="state_bucket_name=$STATE_BUCKET"
 ```
 
-2. Inicializa y aplica la plataforma. El plan permite revisar VPC, EKS, roles IAM, ECR y complementos antes del gasto.
+2. Inicializa y aplica la plataforma. El plan permite revisar VPC, EKS, ECR y complementos antes del gasto; no debe incluir recursos `aws_iam_role`.
 
 ```bash
 terraform -chdir=terraform/aws/platform init \
@@ -58,7 +62,7 @@ terraform -chdir=terraform/aws/platform apply -var-file=../environments/dev.plat
 export TF_VAR_image_tag="$(bash scripts/push-images.sh dev)"
 ```
 
-4. Inicializa y aplica la aplicación. Terraform comprueba que ambas imágenes existan, obtiene el token de EKS con AWS CLI y despliega frontend, backend, Redis, HPA, PDB y RBAC. Redis usa un PVC cifrado `gp3` de 1 GiB.
+4. Inicializa y aplica la aplicación. Terraform comprueba que ambas imágenes existan, obtiene el token de EKS con AWS CLI y despliega frontend, backend, Redis, HPA, PDB y RBAC. En `dev`, Redis usa `emptyDir` temporal.
 
 ```bash
 terraform -chdir=terraform/aws/application init \
@@ -73,7 +77,7 @@ terraform -chdir=terraform/aws/application apply -var-file=../environments/dev.a
 
 ```bash
 aws eks update-kubeconfig --region "$AWS_REGION" --name netflix-lab-dev
-kubectl -n netflix-lab get pods,pvc,hpa
+kubectl -n netflix-lab get pods,hpa
 kubectl -n netflix-lab port-forward svc/frontend 8080:80
 ```
 
@@ -88,7 +92,7 @@ terraform -chdir=terraform/aws/application destroy -var-file=../environments/dev
 terraform -chdir=terraform/aws/platform destroy -var-file=../environments/dev.platform.tfvars
 ```
 
-Comprueba en la consola de AWS que no queden clústeres EKS, instancias EC2, volúmenes EBS o recursos ECR del laboratorio. La desaparición de los nodos no implica que el control plane haya dejado de facturar; espera a que `terraform destroy` termine. El backend S3 usa versionado y bloqueo con archivo `.tflock`; no ejecutes dos `apply` sobre el mismo estado al mismo tiempo.
+Comprueba en la consola de AWS que no queden clústeres EKS, instancias EC2, volúmenes EBS o recursos ECR del laboratorio. La desaparición de los nodos no implica que el control plane haya dejado de facturar; espera a que `terraform destroy` termine. **No borres los roles precreados del lab.** El backend S3 usa versionado y bloqueo con archivo `.tflock`; no ejecutes dos `apply` sobre el mismo estado al mismo tiempo.
 
 ## Relación con los capítulos 1–10 del libro
 

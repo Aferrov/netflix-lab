@@ -40,3 +40,8 @@ variable "enable_loadtest_job" {
   type        = bool
   default     = false
 }
+variable "redis_persistence_enabled" {
+  description = "Requiere un EBS CSI addon con rol Pod Identity existente; false usa emptyDir"
+  type        = bool
+  default     = false
+}
