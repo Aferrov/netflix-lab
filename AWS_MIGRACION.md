@@ -20,7 +20,7 @@ Esta topología pública es deliberada para el laboratorio de bajo costo. La var
 
 ## Requisitos
 
-- Terraform >= 1.10, AWS CLI v2, Docker, `kubectl` y `bash`.
+- Terraform >= 1.10, AWS CLI v2, Docker, `kubectl` y `bash`. En WSL, inicia Docker Desktop, activa **Settings → Resources → WSL Integration** para esta distribución y comprueba `docker info` antes de publicar imágenes.
 - Credenciales temporales de AWS Academy configuradas en el perfil/entorno de AWS CLI; verifica `aws sts get-caller-identity`.
 - Permisos para crear los servicios anteriores y una dirección IPv4 pública de administración.
 - Espacio de IP y cuota de EKS/EC2 disponibles en `us-east-1`.
@@ -60,7 +60,12 @@ terraform -chdir=terraform/aws/platform apply -var-file=../environments/dev.plat
 3. Publica las imágenes Docker en ECR con un tag derivado de su contenido. Si las imágenes ya existen, el script las reutiliza. La construcción es una fase de empaquetado independiente del `terraform apply` de la aplicación.
 
 ```bash
-export TF_VAR_image_tag="$(bash scripts/push-images.sh dev)"
+unset TF_VAR_image_tag
+if TF_VAR_image_tag="$(bash scripts/push-images.sh dev)"; then
+  export TF_VAR_image_tag
+else
+  echo "Falló la publicación de imágenes; no continúes con application" >&2
+fi
 ```
 
 4. Inicializa y aplica la aplicación. Terraform comprueba que ambas imágenes existan, obtiene el token de EKS con AWS CLI y despliega frontend, backend, Redis, HPA, PDB y RBAC. En `dev`, Redis usa `emptyDir` temporal.

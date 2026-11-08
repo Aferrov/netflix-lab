@@ -9,6 +9,10 @@ region="${AWS_REGION:-us-east-1}"
 for tool in aws docker sha256sum; do
   command -v "$tool" >/dev/null || { echo "Falta $tool" >&2; exit 1; }
 done
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker no responde desde WSL. Inicia Docker Desktop y activa Settings > Resources > WSL Integration para esta distribución." >&2
+  exit 1
+fi
 
 account="$(aws sts get-caller-identity --query Account --output text)"
 registry="${account}.dkr.ecr.${region}.amazonaws.com"
@@ -32,5 +36,5 @@ for service in backend frontend; do
   docker push "$image" >&2
 done
 
-# Única salida estándar, útil para: export TF_VAR_image_tag="$(scripts/push-images.sh dev)"
+# Única salida estándar: el tag de imagen para TF_VAR_image_tag.
 printf '%s\n' "$tag"
