@@ -113,4 +113,4 @@ La referencia es la [segunda edición de *Infrastructure as Code* de Kief Morris
 | 8–9 | Validación continua y previsualización de cambios | Workflow `terraform fmt`/`validate`, `terraform plan` antes de `apply` |
 | 10 | Empaquetado y ejecución de aplicaciones | Imágenes inmutables en ECR y módulo Kubernetes reutilizado |
 
-Queda pendiente ejecutar `plan`/`apply` con una cuenta Academy que autorice EKS y verificar el comportamiento del clúster real. La validación de CI comprueba sintaxis y esquemas, no sustituye esta prueba de integración.
+El entorno `dev` ya se desplegó y se destruyó en una cuenta Academy. Se comprobaron nodo y pods listos, respuestas HTTP del dashboard y API, métricas del HPA y eliminación de los recursos. Consulta [EVIDENCIA_IAC_AWS.md](EVIDENCIA_IAC_AWS.md) para el detalle por capítulo y los límites de esta prueba. La validación de CI comprueba sintaxis y esquemas; la verificación en AWS se realizó manualmente.

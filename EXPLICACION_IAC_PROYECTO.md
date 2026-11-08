@@ -1,5 +1,7 @@
 # Documento Explicativo del Proyecto: Transformación a Infraestructura como Código (IaC)
 
+> Este documento describe el laboratorio local KinD y su contexto original. Para los conceptos demostrados en AWS EKS, consulta [EVIDENCIA_IAC_AWS.md](EVIDENCIA_IAC_AWS.md).
+
 **Curso:** Computación en la Nube (Cloud Computing)  
 **Referencia Teórica:** *Infrastructure as Code: Dynamic Systems for the Cloud Age* (Kief Morris, 2da Edición) - Capítulos 3 al 9.  
 **Proyecto:** Laboratorio de Resiliencia, Autoescalado (HPA) y Pruebas de Carga en Kubernetes.
