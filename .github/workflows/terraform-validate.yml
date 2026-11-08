@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        stack: [terraform, terraform/aws/bootstrap, terraform/aws/platform, terraform/aws/application]
+        stack: [terraform, terraform/aws/platform, terraform/aws/application]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -25,3 +25,6 @@ jobs:
       - name: Validate
         run: terraform validate -no-color
         working-directory: ${{ matrix.stack }}
+      - name: Check S3 bootstrap script syntax
+        if: matrix.stack == 'terraform'
+        run: bash -n terraform/aws/bootstrap/bootstrap.sh

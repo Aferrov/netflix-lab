@@ -40,11 +40,10 @@ export TF_VAR_cluster_role_arn="arn:aws:iam::$ACCOUNT_ID:role/$EKS_CLUSTER_ROLE_
 export TF_VAR_node_role_arn="arn:aws:iam::$ACCOUNT_ID:role/$EKS_NODE_ROLE_NAME"
 ```
 
-1. Crea el bucket de estado. El estado de `bootstrap` queda local en `terraform/aws/bootstrap/terraform.tfstate`; conserva ese archivo fuera del repositorio.
+1. Prepara el bucket de estado. El Learner Lab deniega `s3:GetBucketObjectLockConfiguration`, que el recurso `aws_s3_bucket` de Terraform consulta al leer el bucket aunque Object Lock no esté activado. Por eso el bootstrap usa un script versionado e idempotente con AWS CLI. El script crea el bucket si falta y configura versionado, cifrado, bloqueo de acceso público y propiedad del dueño del bucket. Si un intento anterior de Terraform alcanzó a crear el bucket, el script completa su configuración.
 
 ```bash
-terraform -chdir=terraform/aws/bootstrap init
-terraform -chdir=terraform/aws/bootstrap apply -var="state_bucket_name=$STATE_BUCKET"
+bash terraform/aws/bootstrap/bootstrap.sh "$STATE_BUCKET"
 ```
 
 2. Inicializa y aplica la plataforma. El plan permite revisar VPC, EKS, ECR y complementos antes del gasto; no debe incluir recursos `aws_iam_role`.
@@ -87,7 +86,7 @@ Abre `http://localhost:8080`. Para probar el HPA, consulta `kubectl -n netflix-l
 
 ## Destrucción y estado
 
-Destruye primero la aplicación y luego la plataforma; mantén el bucket S3 y su estado local si repetirás el laboratorio. El bucket versionado conserva versiones antiguas de estado, que ocupan espacio.
+Destruye primero la aplicación y luego la plataforma; conserva el bucket S3 si repetirás el laboratorio. El bucket versionado conserva versiones antiguas de estado, que ocupan espacio.
 
 ```bash
 terraform -chdir=terraform/aws/application destroy -var-file=../environments/dev.application.tfvars
@@ -103,8 +102,8 @@ La referencia es la [segunda edición de *Infrastructure as Code* de Kief Morris
 | Capítulos | Concepto aplicado | Evidencia |
 |---|---|---|
 | 1–2 | Reproducibilidad, recursos desechables y cambios pequeños | `terraform/aws/`, parámetros por entorno y destrucción por sesión |
-| 3–4 | Recursos de cómputo, red y almacenamiento definidos como código | Módulos `network`, `eks`, `ecr` y bucket de estado |
-| 5–6 | Stacks pequeños y entornos con código reutilizable | `bootstrap`, `platform`, `application`; archivos `dev`/`prod` |
+| 3–4 | Recursos de cómputo, red y almacenamiento definidos como código | Módulos `network`, `eks`, `ecr` y script de bootstrap del bucket de estado |
+| 5–6 | Stacks pequeños y entornos con código reutilizable | Bootstrap separado, stacks `platform` y `application`; archivos `dev`/`prod` |
 | 7 | Configuración externa y secretos fuera del repositorio | `.tfvars` sin secretos, variables de entorno y roles IAM |
 | 8–9 | Validación continua y previsualización de cambios | Workflow `terraform fmt`/`validate`, `terraform plan` antes de `apply` |
 | 10 | Empaquetado y ejecución de aplicaciones | Imágenes inmutables en ECR y módulo Kubernetes reutilizado |
