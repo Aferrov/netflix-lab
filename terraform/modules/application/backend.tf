@@ -60,6 +60,12 @@ resource "kubernetes_deployment" "backend" {
             value = "redis"
           }
 
+          # El Service redis inyecta REDIS_PORT=tcp://...; Node necesita un puerto numérico.
+          env {
+            name  = "REDIS_PORT"
+            value = "6379"
+          }
+
           resources {
             requests = {
               cpu    = "100m"

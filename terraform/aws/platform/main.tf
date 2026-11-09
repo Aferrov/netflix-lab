@@ -41,7 +41,7 @@ module "ecr" {
 
 resource "aws_cloudwatch_log_group" "eks" {
   name              = "/aws/eks/${local.name}/cluster"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 }
 
 module "eks" {
@@ -51,6 +51,7 @@ module "eks" {
   subnet_ids         = module.network.subnet_ids
   api_access_cidrs   = var.api_access_cidrs
   node_instance_type = var.node_instance_type
+  node_disk_size     = var.node_disk_size
   node_count         = var.node_count
   cluster_role_arn   = var.cluster_role_arn
   node_role_arn      = var.node_role_arn

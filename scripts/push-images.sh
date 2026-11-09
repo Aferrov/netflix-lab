@@ -30,13 +30,19 @@ tag="src-$(sha256sum \
 aws ecr get-login-password --region "$region" | "$docker_cli" login --username AWS --password-stdin "$registry" >&2
 
 for service in backend frontend; do
-  repository="netflix-lab-${environment}/${service}"
+  if [[ "$service" == backend ]]; then
+    image_url="${ECR_BACKEND_URL:-${registry}/netflix-lab-${environment}/backend}"
+  else
+    image_url="${ECR_FRONTEND_URL:-${registry}/netflix-lab-${environment}/frontend}"
+  fi
+  [[ "$image_url" == "$registry/"* ]] || { echo "Repositorio fuera de la cuenta/región actual: $image_url" >&2; exit 1; }
+  repository="${image_url#"$registry/"}"
   if aws ecr describe-images --region "$region" --repository-name "$repository" \
       --image-ids "imageTag=$tag" >/dev/null 2>&1; then
     echo "Imagen ya publicada: $repository:$tag" >&2
     continue
   fi
-  image="${registry}/${repository}:${tag}"
+  image="${image_url}:${tag}"
   "$docker_cli" build --platform linux/amd64 -t "$image" "$repo_root/$service" >&2
   "$docker_cli" push "$image" >&2
 done

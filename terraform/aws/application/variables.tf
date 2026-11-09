@@ -1,4 +1,29 @@
 variable "region" { type = string }
+variable "cluster_name" {
+  description = "Contrato con platform; null conserva el nombre por entorno"
+  type        = string
+  default     = null
+}
+variable "backend_repository_name" {
+  type    = string
+  default = null
+}
+variable "frontend_repository_name" {
+  type    = string
+  default = null
+}
+variable "backend_target_cpu_utilization" {
+  type    = number
+  default = 50
+  validation {
+    condition     = var.backend_target_cpu_utilization > 0 && var.backend_target_cpu_utilization <= 100
+    error_message = "El objetivo CPU debe ser mayor que cero y como máximo 100."
+  }
+}
+variable "redis_storage_size" {
+  type    = string
+  default = "1Gi"
+}
 variable "environment" {
   type = string
   validation {

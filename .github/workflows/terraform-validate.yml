@@ -1,12 +1,67 @@
-name: Terraform validate
+name: CI - tests and Terraform
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
+  tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install from lockfile
+        run: npm ci
+      - name: Check backend syntax
+        run: npm run check
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests with Redis
+        run: npm run test:integration
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Stack coordinator regression tests (no AWS)
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Upload test results and coverage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: backend/reports/
+          if-no-files-found: warn
+          retention-days: 14
+
   validate:
+    needs: tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -25,6 +80,6 @@ jobs:
       - name: Validate
         run: terraform validate -no-color
         working-directory: ${{ matrix.stack }}
-      - name: Check S3 bootstrap script syntax
+      - name: Check automation script syntax
         if: matrix.stack == 'terraform'
-        run: bash -n terraform/aws/bootstrap/bootstrap.sh
+        run: bash -n scripts/aws-lab.sh scripts/push-images.sh terraform/aws/bootstrap/bootstrap.sh

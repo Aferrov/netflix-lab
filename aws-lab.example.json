@@ -1,0 +1,7 @@
+{
+  "state_bucket": null,
+  "cluster_role_arn": null,
+  "node_role_arn": null,
+  "ebs_csi_role_arn": null,
+  "api_access_cidrs": null
+}

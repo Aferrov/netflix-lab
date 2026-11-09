@@ -3,6 +3,10 @@ variable "kubernetes_version" { type = string }
 variable "subnet_ids" { type = list(string) }
 variable "api_access_cidrs" { type = list(string) }
 variable "node_instance_type" { type = string }
+variable "node_disk_size" {
+  type    = number
+  default = 20
+}
 variable "node_count" { type = number }
 variable "cluster_role_arn" {
   type = string
@@ -52,7 +56,7 @@ resource "aws_eks_node_group" "this" {
   subnet_ids      = var.subnet_ids
   instance_types  = [var.node_instance_type]
   capacity_type   = "ON_DEMAND"
-  disk_size       = 20
+  disk_size       = var.node_disk_size
 
   scaling_config {
     desired_size = var.node_count
