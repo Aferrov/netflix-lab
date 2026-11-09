@@ -31,6 +31,24 @@ variable "api_access_cidrs" {
 }
 variable "kubernetes_version" { type = string }
 variable "node_instance_type" { type = string }
+variable "node_disk_size" {
+  description = "Disco EBS de cada nodo, en GiB"
+  type        = number
+  default     = 20
+  validation {
+    condition     = var.node_disk_size >= 20 && floor(var.node_disk_size) == var.node_disk_size
+    error_message = "node_disk_size debe ser un entero de al menos 20 GiB."
+  }
+}
+variable "log_retention_days" {
+  description = "Retención de logs del control plane"
+  type        = number
+  default     = 7
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90], var.log_retention_days)
+    error_message = "Usa una retención de 1, 3, 5, 7, 14, 30, 60 o 90 días."
+  }
+}
 variable "node_count" {
   type = number
   validation {

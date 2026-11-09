@@ -29,14 +29,19 @@ terraform.rc
 .kube/
 kubeconfig
 *.kubeconfig
+# Kubeconfig generado por el proveedor KinD
+/terraform/*-config
+/.aws-lab/
+/aws-lab.local.json
 
 # Dependencias y archivos generados por Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+backend/reports/
 
-# Archivos generados por Python (mock_server.py)
+# Archivos generados por Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -47,3 +52,6 @@ __pycache__/
 .idea/
 .DS_Store
 *.swp
+
+# Documento del curso utilizado como referencia local
+Proyecto_Integrador_Cloud_Computing.pdf

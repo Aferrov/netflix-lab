@@ -29,7 +29,9 @@ provider "aws" {
 }
 
 locals {
-  cluster_name = "netflix-lab-${var.environment}"
+  cluster_name             = coalesce(var.cluster_name, "netflix-lab-${var.environment}")
+  backend_repository_name  = coalesce(var.backend_repository_name, "${local.cluster_name}/backend")
+  frontend_repository_name = coalesce(var.frontend_repository_name, "${local.cluster_name}/frontend")
 }
 
 data "aws_eks_cluster" "this" { name = local.cluster_name }
@@ -38,8 +40,8 @@ data "aws_eks_addon" "ebs_csi" {
   cluster_name = local.cluster_name
   addon_name   = "aws-ebs-csi-driver"
 }
-data "aws_ecr_repository" "backend" { name = "${local.cluster_name}/backend" }
-data "aws_ecr_repository" "frontend" { name = "${local.cluster_name}/frontend" }
+data "aws_ecr_repository" "backend" { name = local.backend_repository_name }
+data "aws_ecr_repository" "frontend" { name = local.frontend_repository_name }
 data "aws_ecr_image" "backend" {
   repository_name = data.aws_ecr_repository.backend.name
   image_tag       = var.image_tag
@@ -77,13 +79,13 @@ module "application" {
   environment                    = var.environment
   backend_min_replicas           = var.backend_min_replicas
   backend_max_replicas           = var.backend_max_replicas
-  backend_target_cpu_utilization = 50
+  backend_target_cpu_utilization = var.backend_target_cpu_utilization
   frontend_replicas              = var.frontend_replicas
   enable_loadtest_job            = var.enable_loadtest_job
   backend_image                  = "${data.aws_ecr_repository.backend.repository_url}@${data.aws_ecr_image.backend.image_digest}"
   frontend_image                 = "${data.aws_ecr_repository.frontend.repository_url}@${data.aws_ecr_image.frontend.image_digest}"
   redis_storage_class_name       = var.redis_persistence_enabled ? kubernetes_storage_class_v1.gp3[0].metadata[0].name : null
-  redis_storage_size             = "1Gi"
+  redis_storage_size             = var.redis_storage_size
   redis_persistence_enabled      = var.redis_persistence_enabled
   depends_on = [
     data.aws_eks_addon.ebs_csi,
@@ -93,6 +95,7 @@ module "application" {
 }
 
 output "cluster_name" { value = local.cluster_name }
+output "image_tag" { value = var.image_tag }
 output "namespace" { value = module.application.namespace }
 output "dashboard_port_forward_cmd" {
   value = "kubectl --context ${data.aws_eks_cluster.this.arn} -n ${module.application.namespace} port-forward svc/${module.application.frontend_service_name} 8080:80"
